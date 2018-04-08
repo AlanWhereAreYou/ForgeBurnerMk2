@@ -21,8 +21,30 @@
  *  
  */
 
-#include <TM1637_6D.h>
-#include <TimerOne.h>
+// BMP Library redistribution text
+/***************************************************************************
+  This is a library for the BMP280 humidity, temperature & pressure sensor
+
+  Designed specifically to work with the Adafruit BMEP280 Breakout 
+  ----> http://www.adafruit.com/products/2651
+
+  These sensors use I2C or SPI to communicate, 2 or 4 pins are required 
+  to interface.
+
+  Adafruit invests time and resources providing this open source code,
+  please support Adafruit andopen-source hardware by purchasing products
+  from Adafruit!
+
+  Written by Limor Fried & Kevin Townsend for Adafruit Industries.  
+  BSD license, all text above must be included in any redistribution
+ ***************************************************************************/
+ 
+#include <TM1637_6D.h> // Display
+#include <TimerOne.h> // Fan control
+#include <Wire.h> // I2C for Pressure Sensor (PT)
+#include <SPI.h> // I2C for Pressure Sensor (PT)
+#include <Adafruit_Sensor.h> // I2C for Pressure Sensor (PT)
+#include <Adafruit_BMP280.h> // I2C for Pressure Sensor (PT)
 
 // Pins - Fan
 const int Pin_PWMFan = 9; // Arduino 9, this is D9/PB1/OC1A
@@ -32,6 +54,10 @@ const int Pin_Tach = 2; // Arduino 2, INT0/PD2
 // Pins - Display
 #define Pin_CLK 6
 #define Pin_DIO 5
+
+// BMP280 Pressure Transmitter (PT) Definitions
+Adafruit_BMP280 bme; // I2C
+const int PtAddress = 0x76;
 
 // Fan Definitions
 // On NMB Fan: Red = +12VDC, Black = GND, Brown = PWM, White = Tach
@@ -80,7 +106,7 @@ void SetupDisplay()
 
 void SetupPT()
 {
-  
+  bme.begin(PtAddress);
 }
 
 void SetupFan()
@@ -96,8 +122,21 @@ void loop()
 { 
   manageScreens();
   manageFanSpeed();
+  managePT();
   TachCalculateData();
   delay(200);
+}
+
+void managePT()
+{
+  Serial.println("3");
+  Serial.print("Temperature = ");
+  Serial.print(bme.readTemperature());
+  Serial.println(" *C");
+   
+  Serial.print("Pressure = ");
+  Serial.print(bme.readPressure()/100.0);
+  Serial.println(" hPa");
 }
 
 void SetScreenCurrent(int screen, long duration)
