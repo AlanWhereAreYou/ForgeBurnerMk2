@@ -109,11 +109,11 @@ const long screen_millisToggleRate = 2000;
 
 void setup()
 {
+  Fan_Setup();
   Serial.begin(9600);
   Serial.println("Setup");
   Display_Setup();
   Pt_Setup();
-  Fan_Setup();
 }
 
 void loop()
@@ -158,7 +158,7 @@ void Pt_ZeroPressure()
   Pt_ZeroHPa=Pt_Bme.readPressure()/100.0;
   Pt_PressurePrint(Pt_ZeroHPa);
   tm1637_6D.displayFloat(Pt_ZeroHPa);
-  delay(5000);
+  delay(1000);
 }
 
 void Pt_PressurePrint(float hPa)
@@ -182,6 +182,7 @@ void Fan_Setup()
   // Attach the tach interrupt
   pinMode(pin_Tach, INPUT_PULLUP);
   attachInterrupt(0, Fan_TachPulseInterrupt, FALLING);  
+  Fan_SetSpeed(0);
 }
 
 void Pt_Manage()
@@ -288,7 +289,14 @@ void Fan_Manage()
   }
 
   last_fan_potInRaw = fan_potInRaw;
-  Timer1.pwm(pin_PWMFan, fan_potInRaw);
+  Fan_SetSpeed(fan_potInRaw);
+}
+
+void Fan_SetSpeed(int RawValue)
+{
+  Timer1.pwm(pin_PWMFan, RawValue);
+  Serial.print("PWM Raw: ");
+  Serial.println(RawValue);
 }
 
 void ScreenRun_Label(int8_t digitByte)
@@ -309,7 +317,7 @@ void ScreenRun_ActualScreen()
 void ScreenRun_RelativePressureScreen()
 {
   // Serial.println("showRelativePressureScreen");
-  tm1637_6D.displayInteger(Pt_Hpa,0);
+  tm1637_6D.displayFloat(Pt_Hpa);
 }
 void ScreenRun_TemperatureScreen()
 {
