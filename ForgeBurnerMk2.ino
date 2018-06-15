@@ -73,10 +73,13 @@ struct TachFeedbackData{
   unsigned long micros_Current;
 };
 TachFeedbackData fan_TachData;
-#define fan_millis_TachCaptureInterval 500; // How frequently do we want to calculate the rpm.
+#define fan_millisTachCaptureInterval 500; // How frequently do we want to calculate the rpm.
+#define fan_microsTachDebounceInterval 200;
 volatile int fan_pulsesCountedByInterrupt = 0;
 volatile long fan_microsCapturedByInterrupt = 0;
 volatile bool fan_interrupt_Lock;
+// volatile long fan_InterruptBounces = 0;
+
 int fan_potInRaw = 0;
 int fan_SetpointIntPct = 0;
 const int fan_SpeedChangeRawDelta = 10;
@@ -181,7 +184,7 @@ void Fan_Setup()
 
   // Attach the tach interrupt
   pinMode(pin_Tach, INPUT_PULLUP);
-  attachInterrupt(0, Fan_TachPulseInterrupt, FALLING);  
+  attachInterrupt(0, Fan_TachPulseInterrupt, RISING);  
   Fan_SetSpeed(0);
 }
 
@@ -199,6 +202,101 @@ void Pt_Manage()
     Pt_PressurePrint(Pt_Hpa); 
     loops = 0;
   }  
+}
+
+void Fan_Manage()
+{
+  static int last_fan_potInRaw = 0;
+  static int fan_ChangeRaw = 0;
+
+  Fan_TachCalculateData();
+  
+  fan_potInRaw = analogRead(pin_Pot);
+  fan_SetpointIntPct = map(fan_potInRaw, 5, 1020, 0, 100);
+
+  // Calculate ABS change. Can't do math within the ABS function.
+  fan_ChangeRaw = last_fan_potInRaw - fan_potInRaw;
+  fan_ChangeRaw = abs(fan_ChangeRaw);
+      
+  if (fan_ChangeRaw > fan_SpeedChangeRawDelta)
+  {
+    Serial.print("Pot: ");
+    Serial.print(fan_potInRaw);
+    Serial.print("   -   Pct: ");
+    Serial.println(fan_SetpointIntPct);
+    Screen_SetCurrent(screen_Setpoint, fan_millisSpeedChangeFlagWindow);
+  }
+
+  last_fan_potInRaw = fan_potInRaw;
+  Fan_SetSpeed(fan_potInRaw);
+}
+
+void Fan_SetSpeed(int RawValue)
+{
+  Timer1.pwm(pin_PWMFan, RawValue);
+  Serial.print("PWM Raw: ");
+  Serial.println(RawValue);
+}
+
+void Fan_TachPulseInterrupt(){
+  static int  pulses_missed = 0;
+  static long micros_DebounceEnd = 0;
+  if(micros()>micros_DebounceEnd)
+  { 
+
+    /* Serial.print("Bounces: ");
+    Serial.println(fan_InterruptBounces);
+     fan_InterruptBounces = 0;
+    */
+    if(!fan_interrupt_Lock){
+      fan_pulsesCountedByInterrupt = fan_pulsesCountedByInterrupt + pulses_missed + 1;
+      pulses_missed = 0;
+      fan_microsCapturedByInterrupt = micros();
+    }
+    else {
+      pulses_missed++;
+    }
+  }
+  /* else
+  {
+    fan_InterruptBounces++;
+  }*/
+  micros_DebounceEnd = micros()+fan_microsTachDebounceInterval;
+}
+
+String Fan_TachDebugString(TachFeedbackData data){
+  return String(data.pulses) + " pulses in " + String(data.millis_Duration, 4) + "ms, " + String(data.freq_Hz,2) + "Hz, " + String (data.RPM) + " RPM";
+}
+
+void Fan_TachCalculateData(){
+    static unsigned long millis_next_run = 0;
+
+    // Only calculate the rpm if we have exceeded the minimum interval
+    if(millis() < millis_next_run) {return;}
+
+    // We do not want to interfere with our interrupt here, so we exert a lock.
+    fan_interrupt_Lock = true;
+    fan_TachData.micros_Current = fan_microsCapturedByInterrupt;
+    fan_TachData.pulses = fan_pulsesCountedByInterrupt;
+    fan_pulsesCountedByInterrupt = 0;
+    fan_interrupt_Lock = false;
+
+    millis_next_run = millis() + fan_millisTachCaptureInterval;
+
+    fan_TachData.millis_Duration = (fan_TachData.micros_Current-fan_TachData.micros_Prev) / 1000.0;
+    // There is a special case when the fan is stopped: Our pulses will be zero, and our interval can also be zero since it's updated in the
+    // tach interrupt. Handle that case here by ignoring any data with a small duration.
+    if (fan_TachData.millis_Duration < 50){
+        fan_TachData.freq_Hz = 0;
+        fan_TachData.RPM = 0;
+    }
+    else {
+      fan_TachData.freq_Hz = (fan_TachData.pulses / fan_TachData.millis_Duration) * 1000;
+      fan_TachData.RPM = fan_TachData.freq_Hz * 30; // (2 pulses per rev, so instead of Hz*60/2 just hardcode Hz*30)
+    }
+    
+    fan_TachData.micros_Prev = fan_TachData.micros_Current;
+    Serial.println(Fan_TachDebugString(fan_TachData));
 }
 
 void Screen_SetCurrent(int screen, long duration)
@@ -265,40 +363,6 @@ void Screen_Manage()
   }
 }
 
-void Fan_Manage()
-{
-  static int last_fan_potInRaw = 0;
-  static int fan_ChangeRaw = 0;
-
-  Fan_TachCalculateData();
-  
-  fan_potInRaw = analogRead(pin_Pot);
-  fan_SetpointIntPct = map(fan_potInRaw, 5, 1020, 0, 100);
-
-  // Calculate ABS change. Can't do math within the ABS function.
-  fan_ChangeRaw = last_fan_potInRaw - fan_potInRaw;
-  fan_ChangeRaw = abs(fan_ChangeRaw);
-      
-  if (fan_ChangeRaw > fan_SpeedChangeRawDelta)
-  {
-    Serial.print("Pot: ");
-    Serial.print(fan_potInRaw);
-    Serial.print("   -   Pct: ");
-    Serial.println(fan_SetpointIntPct);
-    Screen_SetCurrent(screen_Setpoint, fan_millisSpeedChangeFlagWindow);
-  }
-
-  last_fan_potInRaw = fan_potInRaw;
-  Fan_SetSpeed(fan_potInRaw);
-}
-
-void Fan_SetSpeed(int RawValue)
-{
-  Timer1.pwm(pin_PWMFan, RawValue);
-  Serial.print("PWM Raw: ");
-  Serial.println(RawValue);
-}
-
 void ScreenRun_Label(int8_t digitByte)
 {
   int8_t tempListDisp[6] = {digitByte,0,0,0,0,0}; // fill array with blank characters(10th)
@@ -335,53 +399,3 @@ void ScreenRun_ErrorScreen()
   // Serial.println("showErrorScreen");
   tm1637_6D.displayError();
 }
-
-void Fan_TachPulseInterrupt(){
-  static int  pulses_missed = 0;
-  
-  if(!fan_interrupt_Lock){
-    fan_pulsesCountedByInterrupt = fan_pulsesCountedByInterrupt + pulses_missed + 1;
-    pulses_missed = 0;
-    fan_microsCapturedByInterrupt = micros();
-  }
-  else {
-    pulses_missed++;
-  }
-}
-
-String Fan_TachDebugString(TachFeedbackData data){
-  return String(data.pulses) + " pulses in " + String(data.millis_Duration, 4) + "ms, " + String(data.freq_Hz,2) + "Hz, " + String (data.RPM) + " RPM";
-}
-
-void Fan_TachCalculateData(){
-    static unsigned long millis_next_run = 0;
-
-    // Only calculate the rpm if we have exceeded the minimum interval
-    if(millis() < millis_next_run) {return;}
-
-    // We do not want to interfere with our interrupt here, so we exert a lock.
-    fan_interrupt_Lock = true;
-    fan_TachData.micros_Current = fan_microsCapturedByInterrupt;
-    fan_TachData.pulses = fan_pulsesCountedByInterrupt;
-    fan_pulsesCountedByInterrupt = 0;
-    fan_interrupt_Lock = false;
-
-    millis_next_run = millis() + fan_millis_TachCaptureInterval;
-
-    fan_TachData.millis_Duration = (fan_TachData.micros_Current-fan_TachData.micros_Prev) / 1000.0;
-    // There is a special case when the fan is stopped: Our pulses will be zero, and our interval can also be zero since it's updated in the
-    // tach interrupt. Handle that case here by ignoring any data with a small duration.
-    if (fan_TachData.millis_Duration < 50){
-        fan_TachData.freq_Hz = 0;
-        fan_TachData.RPM = 0;
-    }
-    else {
-      fan_TachData.freq_Hz = (fan_TachData.pulses / fan_TachData.millis_Duration) * 1000;
-      fan_TachData.RPM = fan_TachData.freq_Hz * 30; // (2 pulses per rev, so instead of Hz*60/2 just hardcode Hz*30)
-    }
-    
-    fan_TachData.micros_Prev = fan_TachData.micros_Current;
-    Serial.println(Fan_TachDebugString(fan_TachData));
-}
-
-
