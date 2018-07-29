@@ -10,17 +10,6 @@
 // D9 / 0C1A = Fan PWM
 */ 
 
-/*
- *  Tach Program Concept: 
- *  We use Timer1 to control the PWM to the fan.
- *  We count the tach pulses manually using an interrupt.
- *  We use the main loop to read the tach pulse data and calculate rpms, etc.
- *  The main loop will do that calc slowly and relatively infrequently. While it is calculating rpm, we don't want the
- *   tach interrupt to modify the data, so we use a simple lock to prevent it. We do this instead of disabling interrupts.
- *   This means that we might miss a count or two here and there. No big deal. We don't care.
- *  
- */
-
 // BMP Library redistribution text
 /***************************************************************************
   This is a library for the BMP280 humidity, temperature & pressure sensor
@@ -59,7 +48,6 @@ const int pin_Tach = 2; // Arduino 2, INT0/PD2
 Adafruit_BMP280 Pt_Bme; // I2C
 const int Pt_Address = 0x76;
 float Pt_Hpa = 0.0;
-float Pt_ZeroHPa = 0.0;
 float Pt_TempC = 0.0;
 
 // Fan Definitions
@@ -103,11 +91,10 @@ TM1637_6D tm1637_6D(pin_CLK,pin_DIO);
 #define screen_RelativePressure 5
 #define screen_TemperatureLabel 6
 #define screen_Temperature 7
-#define screen_PressureZeroingLabel 8
-#define screen_PressureZeroing 9
+
 static int screen_Current = -1;
 static long screen_millisChangeScreenTime = millis();
-int screen_TopIndex = 9;
+int screen_TopIndex = 7;
 const long screen_millisToggleRate = 2000;
 
 void setup()
@@ -151,17 +138,6 @@ void Pt_Setup()
   {
     Serial.println("BME Started");
   }
-  
-  Pt_ZeroPressure();
-}
-
-void Pt_ZeroPressure()
-{
-  Serial.print("Zeroing PT: ");
-  Pt_ZeroHPa=Pt_Bme.readPressure()/100.0;
-  Pt_PressurePrint(Pt_ZeroHPa);
-  tm1637_6D.displayFloat(Pt_ZeroHPa);
-  delay(1000);
 }
 
 void Pt_PressurePrint(float hPa)
@@ -238,16 +214,21 @@ void Fan_SetSpeed(int RawValue)
   Serial.println(RawValue);
 }
 
+/*
+ *  Tach Program Concept: 
+ *  We use Timer1 to control the PWM to the fan.
+ *  We count the tach pulses manually using an interrupt.
+ *  We use the main loop to read the tach pulse data and calculate rpms, etc.
+ *  The main loop will do that calc slowly and relatively infrequently. While it is calculating rpm, we don't want the
+ *   tach interrupt to modify the data, so we use a simple lock to prevent it. We do this instead of disabling interrupts.
+ *   If the interrupt gets called while the calculation routine holds the lock, then it'll keep track of that missed pulse and add it
+ *   in when it gets the lock back. 
+ */
 void Fan_TachPulseInterrupt(){
   static int  pulses_missed = 0;
   static long micros_DebounceEnd = 0;
   if(micros()>micros_DebounceEnd)
   { 
-
-    /* Serial.print("Bounces: ");
-    Serial.println(fan_InterruptBounces);
-     fan_InterruptBounces = 0;
-    */
     if(!fan_interrupt_Lock){
       fan_pulsesCountedByInterrupt = fan_pulsesCountedByInterrupt + pulses_missed + 1;
       pulses_missed = 0;
@@ -257,10 +238,6 @@ void Fan_TachPulseInterrupt(){
       pulses_missed++;
     }
   }
-  /* else
-  {
-    fan_InterruptBounces++;
-  }*/
   micros_DebounceEnd = micros()+fan_microsTachDebounceInterval;
 }
 
@@ -307,19 +284,10 @@ void Screen_SetCurrent(int screen, long duration)
   }
   screen_Current = screen;
   screen_millisChangeScreenTime = millis() + duration;
-
-  /* Serial.print(millis());
-  Serial.print(" Changed Screen to ");
-  Serial.print(screen_Current);
-  Serial.print(" until ");
-  Serial.println(screen_millisChangeScreenTime);
-  */
 }
 
 void Screen_Manage()
 {
-  // Serial.println("ScreensManage");
-
   if(millis() > screen_millisChangeScreenTime)
   {
     if(screen_Current>=screen_TopIndex){Screen_SetCurrent(0, screen_millisToggleRate);}
@@ -350,12 +318,6 @@ void Screen_Manage()
       break;    
     case screen_Temperature: // Temperature Screen
       ScreenRun_TemperatureScreen();
-      break;
-    case screen_PressureZeroingLabel: // Pressure Zeroing Screen
-       ScreenRun_Label(segTest);
-      break;
-    case screen_PressureZeroing: // Pressure Zeroing Screen
-      ScreenRun_PressureZeroingScreen();
       break;
     default: // Error Screen
       ScreenRun_ErrorScreen();
