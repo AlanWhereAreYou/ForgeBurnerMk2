@@ -1,0 +1,26 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "C:\\Users\\anonis\\AppData\\Local\\Arduino15\\packages\\arduino\\tools\\**",
+                "C:\\Users\\anonis\\AppData\\Local\\Arduino15\\packages\\arduino\\hardware\\avr\\1.6.21\\**",
+                "C:/Users/anonis/Documents/Arduino/libraries/**",
+                "${workspaceFolder}/**"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE"
+            ],
+            "intelliSenseMode": "clang-x64",
+            "browse": {
+                "limitSymbolsToIncludedHeaders": false,
+                "path": [
+                    "C:\\Users\\anonis\\AppData\\Local\\Arduino15\\packages\\arduino\\hardware\\avr\\1.6.21\\cores\\arduino"
+                ]
+            }
+        }
+    ],
+    "version": 4
+}
