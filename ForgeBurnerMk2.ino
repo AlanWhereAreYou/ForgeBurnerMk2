@@ -350,11 +350,6 @@ void ScreenRun_TemperatureScreen()
   // Serial.println("showTemperatureScreen");
   tm1637_6D.displayFloat(Pt_TempC);
 }
-void ScreenRun_PressureZeroingScreen()
-{
-  // Serial.println("showPressureZeroingScreen");
-  tm1637_6D.displayFloat(Pt_ZeroHPa);
-}
 
 void ScreenRun_ErrorScreen()
 {
