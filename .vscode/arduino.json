@@ -1,5 +1,6 @@
 {
     "board": "arduino:avr:nano",
     "configuration": "cpu=atmega328old",
-    "sketch": "ForgeBurnerMk2.ino"
+    "sketch": "ForgeBurnerMk2.ino",
+    "port": "COM6"
 }
